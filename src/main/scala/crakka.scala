@@ -90,23 +90,22 @@ class PingPong extends Actor with Logging {
 
 }
 
-class PingPongServer() {
+class PingPongServer(host:String, port:Int) {
 	 val server:Thread = new Thread(new Runnable() {
 		def run = {
 		  //		 Logging.log.error("starting server")
-		  val server = new RemoteServer
-		  server.start
+		  RemoteServer.start(host, port)
 		}
 	 })
 	 server.start
 //	 Thread.sleep(1000)
 
   val p1 = new PingPong
-  p1.makeRemote(RemoteServer.HOSTNAME, RemoteServer.PORT)
+  p1.makeRemote(host, port)
   p1.start
 
   val p2 = new PingPong
-  p2.makeRemote(RemoteServer.HOSTNAME, RemoteServer.PORT)
+  p2.makeRemote(host, port)
   p2.start
 
   def startPingPong() {
@@ -118,7 +117,7 @@ class PingPongServer() {
 object PingPongService {
   //config.Config
   def main(args: Array[String]): Unit = {
-	 val s1 = new PingPongServer
+	 val s1 = new PingPongServer("localhost", 9990)
 	 Thread.sleep(1000)
 	 s1.startPingPong
   }

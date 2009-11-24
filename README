@@ -1,0 +1,19 @@
+A simple example of remote actors using akka
+
+Implements the classic ping-pong exchange between two remote
+actors. Use this to get started with basic akka.
+
+Installation
+
+Clone akka from github:
+git clone git://github.com/jboner/akka.git
+
+Install akka in your local maven repository using:
+mvn install
+
+Compile and Run
+
+The project uses SBT as build tool. After a successful sbt installation, compile and run using:
+
+sbt compile
+sbt run

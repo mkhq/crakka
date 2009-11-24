@@ -1,45 +1,13 @@
 package crakka;
 
 import se.scalablesolutions.akka.actor.Actor
-import se.scalablesolutions.akka.nio.{RemoteServer}
+import se.scalablesolutions.akka.nio.{RemoteServer, RemoteServerNode}
 import se.scalablesolutions.akka.util.Logging
 import se.scalablesolutions.akka.serialization._
-import sbinary.DefaultProtocol._
-
-case class ActorId(hostname:String, port:Int, Id:Int) extends Serializable.SBinary[ActorId] {
-  implicit object ActorIDFormat extends Format[ActorId] {
-	 def reads(in: Input) = ActorId(
-		read[String](in),
-		read[Int](in),
-		read[Int](in))
-
-	 def writes(out: Output, value: ActorId) = {
-		write[String](out, value.hostname)
-		write[Int](out, value.port)
-		write[Int](out, value.Id)
-	 }
-  }
-
-  def fromBytes(bytes: Array[Byte]) = fromByteArray[ActorId](bytes)
-  def toBytes: Array[Byte] = toByteArray(this)
-}
-
-case class Event(from:ActorId, msg:AnyRef) extends Serializable.SBinary[Event] {
-  implicit object EventFormat extends Format[Event] {
-	 def reads(in: Input) = Event(
-		read[ActorId](in),
-		read[AnyRef](in))
-	 def writes(out: Output, value: Event) = {
-		write[ActorId](out, value.from)
-		write[AnyRef](out, value.msg)
-	 }
-  }
-
-  def fromBytes(bytes: Array[Byte]) = fromByteArray[Event](bytes)
-  def toBytes: Array[Byte] = toByteArray(this)
-}
+import se.scalablesolutions.akka.Config.config
 
 case class Ping() extends Serializable.SBinary[Ping] {
+import sbinary.DefaultProtocol._
   
   implicit object PingFormat extends Format[Ping] {
 	 def reads(in: Input) = Ping()
@@ -64,6 +32,46 @@ import sbinary.DefaultProtocol._
 
   def fromBytes(bytes: Array[Byte]) = fromByteArray[Pong](bytes)
   def toBytes: Array[Byte] = toByteArray(this)
+}
+
+abstract class Service(hostname:String, port:Int) extends Actor with Logging {
+  makeRemote(hostname, port)
+
+  def handle: PartialFunction[Any, Unit]
+
+  override def receive: PartialFunction[Any, Unit] = {
+	 case "broadcast" => { println("broadcast") }
+	 case event =>
+		handle(event)
+  }
+}
+
+abstract class Client(hostname:String, port:Int) extends Service(hostname, port) {
+}
+
+class PPService(hostname:String, port:Int) extends Service(hostname, port) {
+  start
+
+  def handle = {
+	 case Ping =>
+		println("Ping")
+		reply(Pong())
+	 case _ =>
+		throw new RuntimeException("Unknown Message")
+  }
+}
+
+class PPClient(hostname:String, port:Int) extends Client(hostname, port) {
+  start
+
+  def handle = {
+	 case Pong =>
+		println("Pong")
+  }
+
+  def ping(pps:PPService) {
+	 pps ! Ping()
+  }
 }
 
 class PingPong extends Actor with Logging {
@@ -94,7 +102,7 @@ class PingPongServer(host:String, port:Int) {
 	 val server:Thread = new Thread(new Runnable() {
 		def run = {
 		  //		 Logging.log.error("starting server")
-		  RemoteServer.start(host, port)
+		  RemoteServerNode.start(host, port)
 		}
 	 })
 	 server.start
@@ -114,11 +122,44 @@ class PingPongServer(host:String, port:Int) {
   }
 }
 
-object PingPongService {
+/* object PingPongService {
   //config.Config
+  System.setProperty("akka.home", ".")
+
   def main(args: Array[String]): Unit = {
 	 val s1 = new PingPongServer("localhost", 9990)
 	 Thread.sleep(1000)
 	 s1.startPingPong
+
+	 val s2 = new PingPongServer("localhost", 9991)
+	 s2
+  }
+} */
+
+object PingPongService {
+  System.setProperty("akka.home", ".")
+
+  def startServer(hostname:String, port:Int):RemoteServer = {
+	 val s = new RemoteServer
+	 s.start(hostname, port)
+	 s
+  }
+
+  def main(args:Array[String]): Unit = {
+/*	 val myServer = new RemoteServer
+	 myServer.start("localhost", 9990)
+
+	 val myServer2 = new RemoteServer
+	 myServer2.start("localhost", 9991) */
+	 val s1 = startServer("localhost", 9990)
+	 val s2 = startServer("localhost", 9991)
+
+	 val pps = new PPService("localhost", 9990)
+	 val ppc = new PPClient("localhost", 9991)
+
+	 ppc.ping(pps)
+
+	 s1.shutdown
+	 s2.shutdown
   }
 }

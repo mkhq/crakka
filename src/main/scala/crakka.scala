@@ -1,7 +1,8 @@
 package crakka;
 
-import se.scalablesolutions.akka.actor.Actor
+import se.scalablesolutions.akka.actor.{Actor, RemoteActor}
 import se.scalablesolutions.akka.nio.{RemoteServer, RemoteServerNode}
+//import se.scalablesolutions.akka.stm.TransactionManagement
 import se.scalablesolutions.akka.util.Logging
 import se.scalablesolutions.akka.serialization._
 import se.scalablesolutions.akka.Config.config
@@ -34,42 +35,58 @@ import sbinary.DefaultProtocol._
   def toBytes: Array[Byte] = toByteArray(this)
 }
 
-abstract class Service(hostname:String, port:Int) extends Actor with Logging {
-  makeRemote(hostname, port)
+trait Service extends Actor with Logging {
+//  makeRemote(hostname, port)
 
   def handle: PartialFunction[Any, Unit]
 
   override def receive: PartialFunction[Any, Unit] = {
 	 case "broadcast" => { println("broadcast") }
 	 case event =>
+		println("Server got event: " + event)
 		handle(event)
   }
 }
 
-abstract class Client(hostname:String, port:Int) extends Service(hostname, port) {
+trait Client extends Actor with Logging {
+  def handle: PartialFunction[Any, Unit]
+
+  override def receive: PartialFunction[Any, Unit] = {
+	 case "broadcast" => { println("broadcast") }
+	 case event =>
+		println("client got event: " + event)
+		handle(event)
+  }
 }
 
-class PPService(hostname:String, port:Int) extends Service(hostname, port) {
+class PPService extends Service {
   start
 
+//  def this() = this("localhost", 9990)
+
   def handle = {
-	 case Ping =>
-		println("Ping")
+	 case Ping() =>
+		println("Service got Ping")
+		println(sender)
 		reply(Pong())
-	 case _ =>
-		throw new RuntimeException("Unknown Message")
+	 case any =>
+		throw new RuntimeException("Unknown Message" + any)
   }
 }
 
-class PPClient(hostname:String, port:Int) extends Client(hostname, port) {
+case class SendPing(an:Actor)
+
+class PPClient extends Client {
   start
 
   def handle = {
-	 case Pong =>
-		println("Pong")
+	 case SendPing(an:Actor) => an ! Ping()
+	 case Pong() =>
+		println("Client got Pong")
   }
 
-  def ping(pps:PPService) {
+  def ping(pps:Actor) {
+	 println("sending Ping!")
 	 pps ! Ping()
   }
 }
@@ -80,20 +97,20 @@ class PingPong extends Actor with Logging {
 //  val storage = TransactionalState.newMap[String, String]
 
   override def receive: PartialFunction[Any, Unit] = {
-    case Ping() => {
-		reply(Pong())
+    case Ping => {
+		reply(Pong)
 	 }
-	 case Pong() => {
-		reply(Ping())
+	 case Pong => {
+		reply(Ping)
 	 }
   }
 
   def sendPing(other:PingPong) {
-	 other !! Ping()
+	 other !! Ping
   }
 
   def sendPong(other:PingPong) {
-	 other !! Pong()
+	 other !! Pong
   }
 
 }
@@ -146,20 +163,33 @@ object PingPongService {
   }
 
   def main(args:Array[String]): Unit = {
+	 // must be imported if sending messages from a non-actor
+	 //import se.scalablesolutions.akka.actor.Actor.Sender.Self
+
 /*	 val myServer = new RemoteServer
 	 myServer.start("localhost", 9990)
 
 	 val myServer2 = new RemoteServer
 	 myServer2.start("localhost", 9991) */
 	 val s1 = startServer("localhost", 9990)
-	 val s2 = startServer("localhost", 9991)
+//	 val s2 = startServer("localhost", 9991)
 
-	 val pps = new PPService("localhost", 9990)
-	 val ppc = new PPClient("localhost", 9991)
+//	 val pps = new PPService("localhost", 9990)
+
+	 val pps = new PPService
+	 val ppc = new PPClient //("localhost", 9991)
+
+	 pps.makeRemote("localhost", 9990)
+//	 ppc.makeRemote("localhost", 9991)
 
 	 ppc.ping(pps)
 
+	 Thread.sleep(1000)
+	 println("stop")
+	 ppc.stop
+	 pps.stop
+
 	 s1.shutdown
-	 s2.shutdown
+//	 s2.shutdown
   }
 }
